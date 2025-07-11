@@ -128,62 +128,29 @@ jobs:
         key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
         restore-keys: ${{ runner.os }}-m2
     
-    - name: Install dependencies for GUI testing
+    - name: Setup headless display (using proven action)
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: echo "Virtual display setup completed"
+    
+    - name: Install additional tools for screenshots
       run: |
         sudo apt-get update
-        sudo apt-get install -y xvfb imagemagick fluxbox xauth
-    
-    - name: Set up virtual display for GUI testing
-      run: |
-        # Start virtual display with error checking
-        export DISPLAY=:99
-        echo "DISPLAY=:99" >> $GITHUB_ENV
-        
-        # Start Xvfb with more verbose output for debugging
-        Xvfb :99 -screen 0 1024x768x24 -ac +extension GLX +render -noreset &
-        XVFB_PID=$!
-        echo "XVFB_PID=$XVFB_PID" >> $GITHUB_ENV
-        
-        # Wait for Xvfb to start
-        sleep 3
-        
-        # Verify Xvfb is running
-        if ! ps -p $XVFB_PID > /dev/null; then
-          echo "ERROR: Xvfb failed to start"
-          exit 1
-        fi
-        
-        # Test display connection
-        if ! DISPLAY=:99 xdpyinfo > /dev/null 2>&1; then
-          echo "ERROR: Cannot connect to display :99"
-          ps aux | grep Xvfb
-          exit 1
-        fi
-        
-        echo "Virtual display :99 started successfully"
-        
-        # Start window manager
-        DISPLAY=:99 fluxbox > /dev/null 2>&1 &
-        WM_PID=$!
-        echo "WM_PID=$WM_PID" >> $GITHUB_ENV
-        
-        # Wait for window manager
-        sleep 2
-        
-        # Final verification
-        DISPLAY=:99 xdpyinfo | head -5
+        sudo apt-get install -y imagemagick
     
     - name: Run GUI tests with virtual display
-      run: |
-        # Verify display is still available
-        echo "Using DISPLAY: $DISPLAY"
-        xdpyinfo | head -3
-        
-        # Run GUI tests with virtual display (not headless)
-        mvn test -Dtest=JpegScalerGUITest
-        
-        # Also run all tests to ensure CLI tests still work
-        mvn test
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: |
+          # Verify display is available
+          echo "Using DISPLAY: $DISPLAY"
+          xdpyinfo | head -3
+          
+          # Run GUI tests with virtual display (not headless)
+          mvn test -Dtest=JpegScalerGUITest
+          
+          # Also run all tests to ensure CLI tests still work
+          mvn test
     
     - name: Build GUI JAR
       run: |
@@ -192,106 +159,111 @@ jobs:
         # Verify both JARs were created
         ls -la target/*.jar
     
-    - name: Test GUI JAR can start with virtual display
-      run: |
-        # Verify display is available
-        echo "Testing GUI startup with DISPLAY: $DISPLAY"
-        xdpyinfo > /dev/null || (echo "ERROR: Display not available" && exit 1)
-        
-        # Try to start GUI with virtual display (timeout after 10 seconds)
-        timeout 10s java -jar target/jpeg-scaler-gui-1.0.0.jar || echo "GUI started and exited as expected"
+    - name: Test GUI JAR startup
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: |
+          # Verify display is available
+          echo "Testing GUI startup with DISPLAY: $DISPLAY"
+          xdpyinfo | head -3
+          
+          # Try to start GUI with virtual display (timeout after 10 seconds)
+          timeout 10s java -jar target/jpeg-scaler-gui-1.0.0.jar || echo "GUI started and exited as expected"
     
     - name: Create GUI screenshots
-      run: |
-        # Verify display and tools are available
-        echo "Creating screenshots with DISPLAY: $DISPLAY"
-        xdpyinfo > /dev/null || (echo "ERROR: Display not available for screenshots" && exit 1)
-        which convert > /dev/null || (echo "ERROR: ImageMagick convert not found" && exit 1)
-        which import > /dev/null || (echo "ERROR: ImageMagick import not found" && exit 1)
-        
-        # Create a test image for GUI demo
-        convert -size 800x600 xc:lightblue -fill darkblue -draw "circle 400,300 400,100" -pointsize 48 -annotate +200+320 "GUI Test Image" gui-demo-input.jpg
-        echo "Created test input image: gui-demo-input.jpg"
-        
-        # Take initial screenshot of desktop
-        import -window root gui-screenshot-0-desktop.png
-        echo "Captured initial desktop screenshot"
-        
-        # Start GUI application in background
-        echo "Starting GUI application..."
-        java -jar target/jpeg-scaler-gui-1.0.0.jar &
-        GUI_PID=$!
-        echo "GUI started with PID: $GUI_PID"
-        
-        # Wait for GUI to fully load
-        echo "Waiting for GUI to load..."
-        sleep 10
-        
-        # Check if GUI process is still running
-        if ps -p $GUI_PID > /dev/null; then
-          echo "GUI process is running"
-        else
-          echo "WARNING: GUI process may have exited"
-        fi
-        
-        # Take screenshot of GUI window
-        import -window root gui-screenshot-1-with-gui.png
-        echo "Captured GUI screenshot"
-        
-        # List all windows to find GUI window
-        echo "Available windows:"
-        xwininfo -root -tree | grep -E "^\s+0x[0-9a-f]+" | head -10
-        
-        # Try to find and screenshot the GUI window specifically
-        GUI_WINDOW=$(xwininfo -root -tree | grep -i "jpeg\|scaler" | head -1 | awk '{print $1}' || echo "")
-        if [ -n "$GUI_WINDOW" ]; then
-          echo "Found GUI window: $GUI_WINDOW"
-          import -window "$GUI_WINDOW" gui-screenshot-2-gui-window.png
-          echo "Captured specific GUI window screenshot"
-        else
-          echo "GUI window not found in window list"
-        fi
-        
-        # Wait a bit more
-        sleep 3
-        
-        # Take final screenshot
-        import -window root gui-screenshot-3-final.png
-        echo "Captured final screenshot"
-        
-        # Clean up GUI process
-        echo "Cleaning up GUI process..."
-        kill $GUI_PID 2>/dev/null || true
-        sleep 2
-        
-        # Create composite screenshots if files exist
-        if [ -f gui-screenshot-1-with-gui.png ] && [ -f gui-screenshot-3-final.png ]; then
-          convert gui-screenshot-1-with-gui.png gui-screenshot-3-final.png +append gui-screenshots-combined.png
-          convert gui-screenshots-combined.png -resize 1200x600 gui-screenshots-resized.png
-          echo "Created composite screenshots"
-        fi
-        
-        # Create annotated screenshot if main screenshot exists
-        if [ -f gui-screenshot-1-with-gui.png ]; then
-          convert gui-screenshot-1-with-gui.png -pointsize 24 -fill red -annotate +10+30 "JPEG Scaler GUI - Java ${{ matrix.java }}" gui-screenshot-annotated.png
-          echo "Created annotated screenshot"
-        fi
-        
-        # List all created files with sizes
-        echo "=== Created screenshot files ==="
-        for file in gui-*.png gui-*.jpg; do
-          if [ -f "$file" ]; then
-            size=$(stat -c%s "$file" 2>/dev/null || echo "unknown")
-            echo "$file: $size bytes"
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: |
+          # Verify display and tools are available
+          echo "Creating screenshots with DISPLAY: $DISPLAY"
+          xdpyinfo | head -3
+          which convert && which import || (echo "ERROR: ImageMagick tools not found" && exit 1)
+          
+          # Create a test image for GUI demo
+          convert -size 800x600 xc:lightblue -fill darkblue -draw "circle 400,300 400,100" -pointsize 48 -annotate +200+320 "GUI Test Image" gui-demo-input.jpg
+          echo "Created test input image: gui-demo-input.jpg"
+          
+          # Take initial screenshot of desktop
+          import -window root gui-screenshot-0-desktop.png
+          echo "Captured initial desktop screenshot"
+          
+          # Start GUI application in background
+          echo "Starting GUI application..."
+          java -jar target/jpeg-scaler-gui-1.0.0.jar &
+          GUI_PID=$!
+          echo "GUI started with PID: $GUI_PID"
+          
+          # Wait for GUI to fully load
+          echo "Waiting for GUI to load..."
+          sleep 10
+          
+          # Check if GUI process is still running
+          if ps -p $GUI_PID > /dev/null; then
+            echo "GUI process is running"
+          else
+            echo "WARNING: GUI process may have exited"
           fi
-        done
+          
+          # Take screenshot of GUI window
+          import -window root gui-screenshot-1-with-gui.png
+          echo "Captured GUI screenshot"
+          
+          # List all windows to find GUI window
+          echo "Available windows:"
+          xwininfo -root -tree | grep -E "^\s+0x[0-9a-f]+" | head -10
+          
+          # Try to find and screenshot the GUI window specifically
+          GUI_WINDOW=$(xwininfo -root -tree | grep -i "jpeg\|scaler" | head -1 | awk '{print $1}' || echo "")
+          if [ -n "$GUI_WINDOW" ]; then
+            echo "Found GUI window: $GUI_WINDOW"
+            import -window "$GUI_WINDOW" gui-screenshot-2-gui-window.png
+            echo "Captured specific GUI window screenshot"
+          else
+            echo "GUI window not found in window list"
+          fi
+          
+          # Wait a bit more
+          sleep 3
+          
+          # Take final screenshot
+          import -window root gui-screenshot-3-final.png
+          echo "Captured final screenshot"
+          
+          # Clean up GUI process
+          echo "Cleaning up GUI process..."
+          kill $GUI_PID 2>/dev/null || true
+          sleep 2
+          
+          # Create composite screenshots if files exist
+          if [ -f gui-screenshot-1-with-gui.png ] && [ -f gui-screenshot-3-final.png ]; then
+            convert gui-screenshot-1-with-gui.png gui-screenshot-3-final.png +append gui-screenshots-combined.png
+            convert gui-screenshots-combined.png -resize 1200x600 gui-screenshots-resized.png
+            echo "Created composite screenshots"
+          fi
+          
+          # Create annotated screenshot if main screenshot exists
+          if [ -f gui-screenshot-1-with-gui.png ]; then
+            convert gui-screenshot-1-with-gui.png -pointsize 24 -fill red -annotate +10+30 "JPEG Scaler GUI - Java ${{ matrix.java }}" gui-screenshot-annotated.png
+            echo "Created annotated screenshot"
+          fi
+          
+          # List all created files with sizes
+          echo "=== Created screenshot files ==="
+          for file in gui-*.png gui-*.jpg; do
+            if [ -f "$file" ]; then
+              size=$(stat -c%s "$file" 2>/dev/null || echo "unknown")
+              echo "$file: $size bytes"
+            fi
+          done
       continue-on-error: true
     
     - name: Run GUI screenshot test script
-      run: |
-        # Make script executable and run it
-        chmod +x test-gui-screenshot.sh
-        ./test-gui-screenshot.sh
+      uses: GabrielBB/xvfb-action@v1
+      with:
+        run: |
+          # Make script executable and run it
+          chmod +x test-gui-screenshot.sh
+          ./test-gui-screenshot.sh
       continue-on-error: true
     
     - name: Debug screenshot files
@@ -308,28 +280,7 @@ jobs:
         echo "All files in current directory:"
         ls -la
     
-    - name: Cleanup virtual display processes
-      if: always()
-      run: |
-        echo "Cleaning up virtual display processes..."
-        
-        # Kill window manager if it's running
-        if [ -n "$WM_PID" ] && ps -p $WM_PID > /dev/null 2>&1; then
-          echo "Killing window manager (PID: $WM_PID)"
-          kill $WM_PID 2>/dev/null || true
-        fi
-        
-        # Kill Xvfb if it's running
-        if [ -n "$XVFB_PID" ] && ps -p $XVFB_PID > /dev/null 2>&1; then
-          echo "Killing Xvfb (PID: $XVFB_PID)"
-          kill $XVFB_PID 2>/dev/null || true
-        fi
-        
-        # Clean up any remaining processes
-        pkill -f "Xvfb :99" 2>/dev/null || true
-        pkill -f "fluxbox" 2>/dev/null || true
-        
-        echo "Cleanup completed"
+
     
     - name: Upload GUI screenshots and test artifacts
       uses: actions/upload-artifact@v4
