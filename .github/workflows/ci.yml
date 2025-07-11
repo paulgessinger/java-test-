@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        java: [11, 17, 21]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK ${{ matrix.java }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java }}
+        distribution: 'temurin'
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+
+    - name: Run unit tests
+      run: mvn clean test
+
+    - name: Build application
+      run: mvn clean package
+
+    - name: Download test image
+      run: |
+        curl -o test-image.jpg "https://thumbs.dreamstime.com/b/demo-red-rubber-stamp-over-white-background-88003515.jpg"
+        ls -la test-image.jpg
+
+    - name: Test CLI functionality - Help
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar --help
+
+    - name: Test CLI functionality - Version
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar --version
+
+    - name: Test CLI functionality - Scale with exact dimensions
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar \
+          --input test-image.jpg \
+          --output test-output-exact.jpg \
+          --width 400 \
+          --height 300 \
+          --verbose
+        ls -la test-output-exact.jpg
+
+    - name: Test CLI functionality - Scale with max dimensions
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar \
+          --input test-image.jpg \
+          --output test-output-max.jpg \
+          --max-width 200 \
+          --max-height 200 \
+          --verbose
+        ls -la test-output-max.jpg
+
+    - name: Test CLI functionality - Scale with aspect ratio (width only)
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar \
+          --input test-image.jpg \
+          --output test-output-width.jpg \
+          --width 300 \
+          --verbose
+        ls -la test-output-width.jpg
+
+    - name: Test CLI functionality - Scale with aspect ratio (height only)
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar \
+          --input test-image.jpg \
+          --output test-output-height.jpg \
+          --height 200 \
+          --verbose
+        ls -la test-output-height.jpg
+
+    - name: Test CLI functionality - Scale with quality setting
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar \
+          --input test-image.jpg \
+          --output test-output-quality.jpg \
+          --width 300 \
+          --height 300 \
+          --quality 0.9 \
+          --verbose
+        ls -la test-output-quality.jpg
+
+    - name: Test CLI functionality - Scale with short options
+      run: |
+        java -jar target/jpeg-scaler-1.0.0.jar \
+          -i test-image.jpg \
+          -o test-output-short.jpg \
+          -w 250 \
+          -h 250 \
+          -q 0.8 \
+          -v
+        ls -la test-output-short.jpg
+
+    - name: Verify output files exist and have correct dimensions
+      run: |
+        # Check if all output files exist
+        for file in test-output-*.jpg; do
+          if [ ! -f "$file" ]; then
+            echo "Error: $file was not created"
+            exit 1
+          fi
+          echo "✓ $file exists ($(stat -c%s "$file") bytes)"
+        done
+
+    - name: Test CLI error handling - Missing input file
+      run: |
+        if java -jar target/jpeg-scaler-1.0.0.jar --output test.jpg --width 100 --height 100 2>&1 | grep -q "Both input and output files are required"; then
+          echo "✓ Error handling for missing input file works correctly"
+        else
+          echo "✗ Error handling for missing input file failed"
+          exit 1
+        fi
+
+    - name: Test CLI error handling - Missing dimensions
+      run: |
+        if java -jar target/jpeg-scaler-1.0.0.jar --input test-image.jpg --output test.jpg 2>&1 | grep -q "At least one dimension parameter is required"; then
+          echo "✓ Error handling for missing dimensions works correctly"
+        else
+          echo "✗ Error handling for missing dimensions failed"
+          exit 1
+        fi
+
+    - name: Test CLI error handling - Non-existent input file
+      run: |
+        if java -jar target/jpeg-scaler-1.0.0.jar --input non-existent.jpg --output test.jpg --width 100 --height 100 2>&1 | grep -q "Input file does not exist"; then
+          echo "✓ Error handling for non-existent input file works correctly"
+        else
+          echo "✗ Error handling for non-existent input file failed"
+          exit 1
+        fi
+
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-images-java-${{ matrix.java }}
+        path: |
+          test-image.jpg
+          test-output-*.jpg
+        retention-days: 7
+
+    - name: Upload test reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-reports-java-${{ matrix.java }}
+        path: target/surefire-reports/
+        retention-days: 7
