@@ -1,5 +1,6 @@
 package com.example.jpegscaler;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,12 +32,18 @@ class JpegScalerCLITest {
         System.setErr(new PrintStream(errContent));
     }
     
+    @AfterEach
+    void tearDown() {
+        System.setOut(originalOut);
+        System.setErr(originalErr);
+    }
+    
     @Test
     void testCLIHelp() {
         String[] args = {"--help"};
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         String output = outContent.toString();
         assertThat(output).contains("usage:");
@@ -51,8 +58,8 @@ class JpegScalerCLITest {
     void testCLIVersion() {
         String[] args = {"--version"};
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         String output = outContent.toString();
         assertThat(output).contains("jpeg-scaler version 1.0.0");
@@ -62,8 +69,8 @@ class JpegScalerCLITest {
     void testCLIWithMissingInputFile() {
         String[] args = {"--output", "output.jpg", "--width", "100", "--height", "100"};
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException(); // main() handles exceptions internally
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(1);
         
         String errorOutput = errContent.toString();
         assertThat(errorOutput).contains("Both input and output files are required");
@@ -73,8 +80,8 @@ class JpegScalerCLITest {
     void testCLIWithMissingOutputFile() {
         String[] args = {"--input", "input.jpg", "--width", "100", "--height", "100"};
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException(); // main() handles exceptions internally
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(1);
         
         String errorOutput = errContent.toString();
         assertThat(errorOutput).contains("Both input and output files are required");
@@ -87,8 +94,8 @@ class JpegScalerCLITest {
         
         String[] args = {"--input", inputFile.getAbsolutePath(), "--output", outputFile.getAbsolutePath()};
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException(); // main() handles exceptions internally
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(1);
         
         String errorOutput = errContent.toString();
         assertThat(errorOutput).contains("At least one dimension parameter is required");
@@ -106,8 +113,8 @@ class JpegScalerCLITest {
             "--height", "50"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         assertThat(outputFile).exists();
         
@@ -132,8 +139,8 @@ class JpegScalerCLITest {
             "--max-height", "100"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         assertThat(outputFile).exists();
         
@@ -157,8 +164,8 @@ class JpegScalerCLITest {
             "--width", "50"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         assertThat(outputFile).exists();
         
@@ -182,8 +189,8 @@ class JpegScalerCLITest {
             "--height", "50"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         assertThat(outputFile).exists();
         
@@ -209,8 +216,8 @@ class JpegScalerCLITest {
             "--quality", "0.9"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         assertThat(outputFile).exists();
         
@@ -231,8 +238,8 @@ class JpegScalerCLITest {
             "--verbose"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         assertThat(outputFile).exists();
         
@@ -256,8 +263,8 @@ class JpegScalerCLITest {
             "--height", "50"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException(); // main() handles exceptions internally
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(1);
         
         String errorOutput = errContent.toString();
         assertThat(errorOutput).contains("Error processing image:");
@@ -277,8 +284,8 @@ class JpegScalerCLITest {
             "--quality", "1.5"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException(); // main() handles exceptions internally
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(1);
         
         String errorOutput = errContent.toString();
         assertThat(errorOutput).contains("Quality must be between 0.0 and 1.0");
@@ -296,8 +303,8 @@ class JpegScalerCLITest {
             "--height", "50"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException(); // main() handles exceptions internally
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(1);
         
         String errorOutput = errContent.toString();
         assertThat(errorOutput).contains("Width and height must be positive integers");
@@ -317,8 +324,8 @@ class JpegScalerCLITest {
             "-v"
         };
         
-        assertThatCode(() -> JpegScalerCLI.main(args))
-                .doesNotThrowAnyException();
+        int exitCode = JpegScalerCLI.run(args);
+        assertThat(exitCode).isEqualTo(0);
         
         assertThat(outputFile).exists();
         

@@ -4,7 +4,11 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.Iterator;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriter;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.stream.ImageOutputStream;
 
 /**
  * Service class for scaling JPEG images.
@@ -47,10 +51,8 @@ public class JpegScaler {
             outputDir.mkdirs();
         }
         
-        // Write the scaled image
-        if (!ImageIO.write(scaledImage, "JPEG", outputFile)) {
-            throw new IOException("Could not write JPEG image to file: " + outputFile.getPath());
-        }
+        // Write the scaled image with quality control
+        writeJpegWithQuality(scaledImage, outputFile, quality);
     }
     
     /**
@@ -104,6 +106,36 @@ public class JpegScaler {
         g2d.dispose();
         
         return scaledImage;
+    }
+    
+    /**
+     * Writes a BufferedImage as JPEG with specified quality.
+     *
+     * @param image      the image to write
+     * @param outputFile the output file
+     * @param quality    the JPEG quality (0.0f to 1.0f)
+     * @throws IOException if an I/O error occurs
+     */
+    private void writeJpegWithQuality(BufferedImage image, File outputFile, float quality) throws IOException {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName("JPEG");
+        if (!writers.hasNext()) {
+            throw new IOException("No JPEG writer available");
+        }
+        
+        ImageWriter writer = writers.next();
+        ImageWriteParam param = writer.getDefaultWriteParam();
+        
+        if (param.canWriteCompressed()) {
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(quality);
+        }
+        
+        try (ImageOutputStream ios = ImageIO.createImageOutputStream(outputFile)) {
+            writer.setOutput(ios);
+            writer.write(null, new javax.imageio.IIOImage(image, null, null), param);
+        } finally {
+            writer.dispose();
+        }
     }
     
     /**

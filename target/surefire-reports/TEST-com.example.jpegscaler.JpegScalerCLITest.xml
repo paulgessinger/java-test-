@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="com.example.jpegscaler.JpegScalerTest" time="0.217" tests="12" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report-3.0.xsd" version="3.0" name="com.example.jpegscaler.JpegScalerCLITest" time="0.055" tests="15" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="21"/>
     <property name="sun.jnu.encoding" value="UTF-8"/>
@@ -53,16 +53,19 @@
     <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
     <property name="java.class.version" value="65.0"/>
   </properties>
-  <testcase name="testScaleImageDownscaling" classname="com.example.jpegscaler.JpegScalerTest" time="0.132"/>
-  <testcase name="testScaleImageWithNonExistentInput" classname="com.example.jpegscaler.JpegScalerTest" time="0.002"/>
-  <testcase name="testScaleImageWithValidInput" classname="com.example.jpegscaler.JpegScalerTest" time="0.004"/>
-  <testcase name="testGetImageDimensionsWithNonExistentFile" classname="com.example.jpegscaler.JpegScalerTest" time="0.002"/>
-  <testcase name="testScaleImageWithInvalidDimensions" classname="com.example.jpegscaler.JpegScalerTest" time="0.003"/>
-  <testcase name="testScaleImageWithDifferentQualitySettings" classname="com.example.jpegscaler.JpegScalerTest" time="0.045"/>
-  <testcase name="testScaleImageMaintainAspectRatio" classname="com.example.jpegscaler.JpegScalerTest" time="0.003"/>
-  <testcase name="testScaleImageMaintainAspectRatioTallImage" classname="com.example.jpegscaler.JpegScalerTest" time="0.003"/>
-  <testcase name="testScaleImageWithInvalidQuality" classname="com.example.jpegscaler.JpegScalerTest" time="0.002"/>
-  <testcase name="testScaleImageCreatesOutputDirectory" classname="com.example.jpegscaler.JpegScalerTest" time="0.002"/>
-  <testcase name="testGetImageDimensions" classname="com.example.jpegscaler.JpegScalerTest" time="0.001"/>
-  <testcase name="testScaleImageUpscaling" classname="com.example.jpegscaler.JpegScalerTest" time="0.002"/>
+  <testcase name="testCLIWithOnlyWidth" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.012"/>
+  <testcase name="testCLIWithInvalidDimensions" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.002"/>
+  <testcase name="testCLIWithVerbose" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.003"/>
+  <testcase name="testCLIWithMissingInputFile" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.002"/>
+  <testcase name="testCLIWithMaxDimensions" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.003"/>
+  <testcase name="testCLIWithInvalidQuality" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.003"/>
+  <testcase name="testCLIWithQuality" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.002"/>
+  <testcase name="testCLIShortOptions" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.003"/>
+  <testcase name="testCLIHelp" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.001"/>
+  <testcase name="testCLIWithMissingOutputFile" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.001"/>
+  <testcase name="testCLIWithExactDimensions" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.003"/>
+  <testcase name="testCLIWithOnlyHeight" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.003"/>
+  <testcase name="testCLIWithMissingDimensions" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.002"/>
+  <testcase name="testCLIVersion" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.001"/>
+  <testcase name="testCLIWithNonExistentInputFile" classname="com.example.jpegscaler.JpegScalerCLITest" time="0.001"/>
 </testsuite>

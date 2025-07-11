@@ -15,6 +15,20 @@ public class JpegScalerCLI {
     private static final float DEFAULT_QUALITY = 0.8f;
     
     public static void main(String[] args) {
+        int exitCode = run(args);
+        if (exitCode != 0) {
+            System.exit(exitCode);
+        }
+    }
+    
+    /**
+     * Runs the CLI with the given arguments and returns the exit code.
+     * This method is designed to be testable (doesn't call System.exit).
+     * 
+     * @param args command line arguments
+     * @return exit code (0 for success, non-zero for error)
+     */
+    public static int run(String[] args) {
         Options options = createOptions();
         CommandLineParser parser = new DefaultParser();
         
@@ -23,25 +37,25 @@ public class JpegScalerCLI {
             
             if (cmd.hasOption("help")) {
                 printHelp(options);
-                return;
+                return 0;
             }
             
             if (cmd.hasOption("version")) {
                 printVersion();
-                return;
+                return 0;
             }
             
             // Validate required arguments
             if (!cmd.hasOption("input") || !cmd.hasOption("output")) {
                 System.err.println("Error: Both input and output files are required.");
                 printHelp(options);
-                System.exit(1);
+                return 1;
             }
             
             if (!cmd.hasOption("width") && !cmd.hasOption("height") && !cmd.hasOption("max-width") && !cmd.hasOption("max-height")) {
                 System.err.println("Error: At least one dimension parameter is required (width, height, max-width, or max-height).");
                 printHelp(options);
-                System.exit(1);
+                return 1;
             }
             
             // Parse arguments
@@ -95,7 +109,7 @@ public class JpegScalerCLI {
                         }
                     } catch (IOException e) {
                         System.err.println("Error: Could not read original image dimensions to calculate missing dimension: " + e.getMessage());
-                        System.exit(1);
+                        return 1;
                     }
                 }
                 
@@ -116,20 +130,21 @@ public class JpegScalerCLI {
             }
             
             System.out.println("Image scaling completed successfully!");
+            return 0;
             
         } catch (ParseException e) {
             System.err.println("Error parsing command line arguments: " + e.getMessage());
             printHelp(options);
-            System.exit(1);
+            return 1;
         } catch (NumberFormatException e) {
             System.err.println("Error: Invalid number format: " + e.getMessage());
-            System.exit(1);
+            return 1;
         } catch (IllegalArgumentException e) {
             System.err.println("Error: " + e.getMessage());
-            System.exit(1);
+            return 1;
         } catch (IOException e) {
             System.err.println("Error processing image: " + e.getMessage());
-            System.exit(1);
+            return 1;
         }
     }
     
