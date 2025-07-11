@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [11, 17, 21]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up JDK ${{ matrix.java }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java }}
+        distribution: 'temurin'
+    
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    
+    - name: Download test image
+      run: |
+        curl -o test-image.jpg "https://thumbs.dreamstime.com/b/demo-red-rubber-stamp-over-white-background-88003515.jpg"
+        ls -la test-image.jpg
+    
+    - name: Run tests
+      run: mvn clean test
+    
+    - name: Build executable JAR
+      run: mvn clean package
+    
+    - name: Test CLI with downloaded image
+      run: |
+        # Test basic scaling
+        java -jar target/jpeg-scaler-1.0.0.jar -i test-image.jpg -o test-output-800x600.jpg -w 800 -h 600 -v
+        
+        # Test aspect ratio preservation
+        java -jar target/jpeg-scaler-1.0.0.jar -i test-image.jpg -o test-output-max500.jpg --max-width 500 --max-height 500 -v
+        
+        # Test with different quality
+        java -jar target/jpeg-scaler-1.0.0.jar -i test-image.jpg -o test-output-quality.jpg -w 400 -h 300 -q 0.9 -v
+        
+        # Test width-only scaling (maintains aspect ratio)
+        java -jar target/jpeg-scaler-1.0.0.jar -i test-image.jpg -o test-output-width-only.jpg -w 600 -v
+        
+        # Test height-only scaling (maintains aspect ratio)
+        java -jar target/jpeg-scaler-1.0.0.jar -i test-image.jpg -o test-output-height-only.jpg -h 400 -v
+        
+        # Verify output files exist and have correct dimensions
+        ls -la test-output-*.jpg
+        
+        # Test help and version
+        java -jar target/jpeg-scaler-1.0.0.jar --help
+        java -jar target/jpeg-scaler-1.0.0.jar --version
+    
+    - name: Verify output images
+      run: |
+        # Use ImageMagick to verify the output images have correct dimensions
+        sudo apt-get update && sudo apt-get install -y imagemagick
+        
+        echo "Original image dimensions:"
+        identify test-image.jpg
+        
+        echo "800x600 output dimensions:"
+        identify test-output-800x600.jpg | grep -o '[0-9]*x[0-9]*'
+        
+        echo "Max 500 output dimensions:"
+        identify test-output-max500.jpg | grep -o '[0-9]*x[0-9]*'
+        
+        echo "Quality test output dimensions:"
+        identify test-output-quality.jpg | grep -o '[0-9]*x[0-9]*'
+        
+        echo "Width-only output dimensions:"
+        identify test-output-width-only.jpg | grep -o '[0-9]*x[0-9]*'
+        
+        echo "Height-only output dimensions:"
+        identify test-output-height-only.jpg | grep -o '[0-9]*x[0-9]*'
+        
+        # Verify that files were actually created and are not empty
+        test -s test-output-800x600.jpg
+        test -s test-output-max500.jpg
+        test -s test-output-quality.jpg
+        test -s test-output-width-only.jpg
+        test -s test-output-height-only.jpg
+    
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-images-java-${{ matrix.java }}
+        path: |
+          test-image.jpg
+          test-output-*.jpg
+        retention-days: 7
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up JDK 11
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+    
+    - name: Build executable JAR
+      run: mvn clean package -DskipTests
+    
+    - name: Test error conditions
+      run: |
+        # Test missing input file
+        ! java -jar target/jpeg-scaler-1.0.0.jar -o output.jpg -w 100 -h 100
+        
+        # Test missing output file
+        ! java -jar target/jpeg-scaler-1.0.0.jar -i test.jpg -w 100 -h 100
+        
+        # Test missing dimensions
+        echo "test" > dummy.txt
+        ! java -jar target/jpeg-scaler-1.0.0.jar -i dummy.txt -o output.jpg
+        
+        # Test invalid quality
+        echo "test" > dummy.txt
+        ! java -jar target/jpeg-scaler-1.0.0.jar -i dummy.txt -o output.jpg -w 100 -h 100 -q 1.5
+        
+        # Test non-existent input file
+        ! java -jar target/jpeg-scaler-1.0.0.jar -i non-existent.jpg -o output.jpg -w 100 -h 100
+    
+    - name: Performance test with large image
+      run: |
+        # Create a larger test image using ImageMagick
+        sudo apt-get update && sudo apt-get install -y imagemagick
+        convert -size 2000x1500 xc:white -fill red -draw "circle 1000,750 1000,250" large-test.jpg
+        
+        echo "Large test image created:"
+        identify large-test.jpg
+        
+        # Test scaling performance
+        time java -jar target/jpeg-scaler-1.0.0.jar -i large-test.jpg -o large-output.jpg -w 800 -h 600 -v
+        
+        echo "Large output image:"
+        identify large-output.jpg
