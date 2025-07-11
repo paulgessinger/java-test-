@@ -130,23 +130,29 @@ jobs:
     
     - name: Set up virtual display for GUI testing
       run: |
-        # Install Xvfb for virtual display
+        # Install Xvfb for virtual display and window manager
         sudo apt-get update
-        sudo apt-get install -y xvfb imagemagick
+        sudo apt-get install -y xvfb imagemagick fluxbox
         
         # Start virtual display
         export DISPLAY=:99
         Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
         
-        # Wait for display to be ready
-        sleep 3
+        # Start window manager
+        DISPLAY=:99 fluxbox > /dev/null 2>&1 &
+        
+        # Wait for display and window manager to be ready
+        sleep 5
         
         # Verify display is working
-        xdpyinfo -display :99
+        DISPLAY=:99 xdpyinfo
     
-    - name: Run GUI tests in headless mode
+    - name: Run GUI tests with virtual display
       run: |
-        # Run GUI tests with headless mode
+        # Set display for GUI tests
+        export DISPLAY=:99
+        
+        # Run GUI tests with virtual display (not headless)
         mvn test -Dtest=JpegScalerGUITest
         
         # Also run all tests to ensure CLI tests still work
@@ -159,56 +165,83 @@ jobs:
         # Verify both JARs were created
         ls -la target/*.jar
     
-    - name: Test GUI JAR can start (headless)
+    - name: Test GUI JAR can start with virtual display
       run: |
         export DISPLAY=:99
         
-        # Try to start GUI in headless mode with timeout
-        timeout 10s java -Djava.awt.headless=true -jar target/jpeg-scaler-gui-1.0.0.jar || echo "GUI started and exited as expected in headless mode"
+        # Try to start GUI with virtual display (timeout after 10 seconds)
+        timeout 10s java -jar target/jpeg-scaler-gui-1.0.0.jar || echo "GUI started and exited as expected"
     
-    - name: Create GUI screenshots (if display available)
-      if: ${{ matrix.java == '11' }}
+    - name: Create GUI screenshots
       run: |
         export DISPLAY=:99
-        
-        # Install window manager for better screenshot support
-        sudo apt-get install -y fluxbox
-        
-        # Start window manager
-        fluxbox &
-        sleep 2
         
         # Create a test image for GUI demo
         convert -size 800x600 xc:lightblue -fill darkblue -draw "circle 400,300 400,100" -pointsize 48 -annotate +200+320 "GUI Test Image" gui-demo-input.jpg
         
+        # Take initial screenshot of desktop
+        DISPLAY=:99 import -window root gui-screenshot-0-desktop.png
+        
         # Start GUI application in background
-        java -jar target/jpeg-scaler-gui-1.0.0.jar &
+        DISPLAY=:99 java -jar target/jpeg-scaler-gui-1.0.0.jar &
         GUI_PID=$!
         
         # Wait for GUI to fully load
-        sleep 5
+        sleep 8
         
-        # Take screenshot of initial GUI
-        import -window root gui-screenshot-1-initial.png
+        # Take screenshot of GUI window
+        DISPLAY=:99 import -window root gui-screenshot-1-with-gui.png
         
-        # Wait a bit more for any animations
+        # Try to take a screenshot of just the GUI window (if we can find it)
+        GUI_WINDOW=$(DISPLAY=:99 xwininfo -root -tree | grep "JPEG Scaler" | head -1 | awk '{print $1}' || echo "")
+        if [ -n "$GUI_WINDOW" ]; then
+          DISPLAY=:99 import -window $GUI_WINDOW gui-screenshot-2-gui-window.png
+        fi
+        
+        # Wait a bit more
+        sleep 3
+        
+        # Take final screenshot
+        DISPLAY=:99 import -window root gui-screenshot-3-final.png
+        
+        # Clean up GUI process
+        kill $GUI_PID 2>/dev/null || true
         sleep 2
         
-        # Take another screenshot
-        import -window root gui-screenshot-2-loaded.png
+        # Create a composite screenshot showing the progression
+        if [ -f gui-screenshot-1-with-gui.png ] && [ -f gui-screenshot-3-final.png ]; then
+          convert gui-screenshot-1-with-gui.png gui-screenshot-3-final.png +append gui-screenshots-combined.png
+          convert gui-screenshots-combined.png -resize 1200x600 gui-screenshots-resized.png
+        fi
         
-        # Clean up
-        kill $GUI_PID || true
+        # Create a summary image with annotations
+        convert gui-screenshot-1-with-gui.png -pointsize 24 -fill red -annotate +10+30 "JPEG Scaler GUI - Java ${{ matrix.java }}" gui-screenshot-annotated.png
         
-        # Create a composite screenshot showing the GUI
-        convert gui-screenshot-1-initial.png gui-screenshot-2-loaded.png +append gui-screenshots-combined.png
-        
-        # Resize screenshots for better viewing
-        convert gui-screenshots-combined.png -resize 1200x600 gui-screenshots-resized.png
-        
-        # List created screenshots
-        ls -la gui-*.png gui-*.jpg
+        # List all created files
+        echo "Created screenshot files:"
+        ls -la gui-*.png gui-*.jpg 2>/dev/null || echo "No screenshot files found"
       continue-on-error: true
+    
+    - name: Run GUI screenshot test script
+      run: |
+        # Make script executable and run it
+        chmod +x test-gui-screenshot.sh
+        ./test-gui-screenshot.sh
+      continue-on-error: true
+    
+    - name: Debug screenshot files
+      if: always()
+      run: |
+        echo "=== Debugging screenshot files ==="
+        echo "Current directory: $(pwd)"
+        echo "All PNG files:"
+        find . -name "*.png" -type f 2>/dev/null || echo "No PNG files found"
+        echo "All JPG files:"
+        find . -name "*.jpg" -type f 2>/dev/null || echo "No JPG files found"
+        echo "Files matching gui-* pattern:"
+        ls -la gui-* 2>/dev/null || echo "No files matching gui-* pattern"
+        echo "All files in current directory:"
+        ls -la
     
     - name: Upload GUI screenshots and test artifacts
       uses: actions/upload-artifact@v4
@@ -218,6 +251,8 @@ jobs:
         path: |
           gui-*.png
           gui-*.jpg
+          screenshot-*.png
+          test-input.jpg
           target/*.jar
         retention-days: 14
 
