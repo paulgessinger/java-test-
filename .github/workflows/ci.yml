@@ -128,29 +128,56 @@ jobs:
         key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
         restore-keys: ${{ runner.os }}-m2
     
+    - name: Install dependencies for GUI testing
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb imagemagick fluxbox xauth
+    
     - name: Set up virtual display for GUI testing
       run: |
-        # Install Xvfb for virtual display and window manager
-        sudo apt-get update
-        sudo apt-get install -y xvfb imagemagick fluxbox
-        
-        # Start virtual display
+        # Start virtual display with error checking
         export DISPLAY=:99
-        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+        echo "DISPLAY=:99" >> $GITHUB_ENV
+        
+        # Start Xvfb with more verbose output for debugging
+        Xvfb :99 -screen 0 1024x768x24 -ac +extension GLX +render -noreset &
+        XVFB_PID=$!
+        echo "XVFB_PID=$XVFB_PID" >> $GITHUB_ENV
+        
+        # Wait for Xvfb to start
+        sleep 3
+        
+        # Verify Xvfb is running
+        if ! ps -p $XVFB_PID > /dev/null; then
+          echo "ERROR: Xvfb failed to start"
+          exit 1
+        fi
+        
+        # Test display connection
+        if ! DISPLAY=:99 xdpyinfo > /dev/null 2>&1; then
+          echo "ERROR: Cannot connect to display :99"
+          ps aux | grep Xvfb
+          exit 1
+        fi
+        
+        echo "Virtual display :99 started successfully"
         
         # Start window manager
         DISPLAY=:99 fluxbox > /dev/null 2>&1 &
+        WM_PID=$!
+        echo "WM_PID=$WM_PID" >> $GITHUB_ENV
         
-        # Wait for display and window manager to be ready
-        sleep 5
+        # Wait for window manager
+        sleep 2
         
-        # Verify display is working
-        DISPLAY=:99 xdpyinfo
+        # Final verification
+        DISPLAY=:99 xdpyinfo | head -5
     
     - name: Run GUI tests with virtual display
       run: |
-        # Set display for GUI tests
-        export DISPLAY=:99
+        # Verify display is still available
+        echo "Using DISPLAY: $DISPLAY"
+        xdpyinfo | head -3
         
         # Run GUI tests with virtual display (not headless)
         mvn test -Dtest=JpegScalerGUITest
@@ -167,59 +194,97 @@ jobs:
     
     - name: Test GUI JAR can start with virtual display
       run: |
-        export DISPLAY=:99
+        # Verify display is available
+        echo "Testing GUI startup with DISPLAY: $DISPLAY"
+        xdpyinfo > /dev/null || (echo "ERROR: Display not available" && exit 1)
         
         # Try to start GUI with virtual display (timeout after 10 seconds)
         timeout 10s java -jar target/jpeg-scaler-gui-1.0.0.jar || echo "GUI started and exited as expected"
     
     - name: Create GUI screenshots
       run: |
-        export DISPLAY=:99
+        # Verify display and tools are available
+        echo "Creating screenshots with DISPLAY: $DISPLAY"
+        xdpyinfo > /dev/null || (echo "ERROR: Display not available for screenshots" && exit 1)
+        which convert > /dev/null || (echo "ERROR: ImageMagick convert not found" && exit 1)
+        which import > /dev/null || (echo "ERROR: ImageMagick import not found" && exit 1)
         
         # Create a test image for GUI demo
         convert -size 800x600 xc:lightblue -fill darkblue -draw "circle 400,300 400,100" -pointsize 48 -annotate +200+320 "GUI Test Image" gui-demo-input.jpg
+        echo "Created test input image: gui-demo-input.jpg"
         
         # Take initial screenshot of desktop
-        DISPLAY=:99 import -window root gui-screenshot-0-desktop.png
+        import -window root gui-screenshot-0-desktop.png
+        echo "Captured initial desktop screenshot"
         
         # Start GUI application in background
-        DISPLAY=:99 java -jar target/jpeg-scaler-gui-1.0.0.jar &
+        echo "Starting GUI application..."
+        java -jar target/jpeg-scaler-gui-1.0.0.jar &
         GUI_PID=$!
+        echo "GUI started with PID: $GUI_PID"
         
         # Wait for GUI to fully load
-        sleep 8
+        echo "Waiting for GUI to load..."
+        sleep 10
+        
+        # Check if GUI process is still running
+        if ps -p $GUI_PID > /dev/null; then
+          echo "GUI process is running"
+        else
+          echo "WARNING: GUI process may have exited"
+        fi
         
         # Take screenshot of GUI window
-        DISPLAY=:99 import -window root gui-screenshot-1-with-gui.png
+        import -window root gui-screenshot-1-with-gui.png
+        echo "Captured GUI screenshot"
         
-        # Try to take a screenshot of just the GUI window (if we can find it)
-        GUI_WINDOW=$(DISPLAY=:99 xwininfo -root -tree | grep "JPEG Scaler" | head -1 | awk '{print $1}' || echo "")
+        # List all windows to find GUI window
+        echo "Available windows:"
+        xwininfo -root -tree | grep -E "^\s+0x[0-9a-f]+" | head -10
+        
+        # Try to find and screenshot the GUI window specifically
+        GUI_WINDOW=$(xwininfo -root -tree | grep -i "jpeg\|scaler" | head -1 | awk '{print $1}' || echo "")
         if [ -n "$GUI_WINDOW" ]; then
-          DISPLAY=:99 import -window $GUI_WINDOW gui-screenshot-2-gui-window.png
+          echo "Found GUI window: $GUI_WINDOW"
+          import -window "$GUI_WINDOW" gui-screenshot-2-gui-window.png
+          echo "Captured specific GUI window screenshot"
+        else
+          echo "GUI window not found in window list"
         fi
         
         # Wait a bit more
         sleep 3
         
         # Take final screenshot
-        DISPLAY=:99 import -window root gui-screenshot-3-final.png
+        import -window root gui-screenshot-3-final.png
+        echo "Captured final screenshot"
         
         # Clean up GUI process
+        echo "Cleaning up GUI process..."
         kill $GUI_PID 2>/dev/null || true
         sleep 2
         
-        # Create a composite screenshot showing the progression
+        # Create composite screenshots if files exist
         if [ -f gui-screenshot-1-with-gui.png ] && [ -f gui-screenshot-3-final.png ]; then
           convert gui-screenshot-1-with-gui.png gui-screenshot-3-final.png +append gui-screenshots-combined.png
           convert gui-screenshots-combined.png -resize 1200x600 gui-screenshots-resized.png
+          echo "Created composite screenshots"
         fi
         
-        # Create a summary image with annotations
-        convert gui-screenshot-1-with-gui.png -pointsize 24 -fill red -annotate +10+30 "JPEG Scaler GUI - Java ${{ matrix.java }}" gui-screenshot-annotated.png
+        # Create annotated screenshot if main screenshot exists
+        if [ -f gui-screenshot-1-with-gui.png ]; then
+          convert gui-screenshot-1-with-gui.png -pointsize 24 -fill red -annotate +10+30 "JPEG Scaler GUI - Java ${{ matrix.java }}" gui-screenshot-annotated.png
+          echo "Created annotated screenshot"
+        fi
         
-        # List all created files
-        echo "Created screenshot files:"
-        ls -la gui-*.png gui-*.jpg 2>/dev/null || echo "No screenshot files found"
+        # List all created files with sizes
+        echo "=== Created screenshot files ==="
+        for file in gui-*.png gui-*.jpg; do
+          if [ -f "$file" ]; then
+            size=$(stat -c%s "$file" 2>/dev/null || echo "unknown")
+            echo "$file: $size bytes"
+          fi
+        done
       continue-on-error: true
     
     - name: Run GUI screenshot test script
@@ -242,6 +307,29 @@ jobs:
         ls -la gui-* 2>/dev/null || echo "No files matching gui-* pattern"
         echo "All files in current directory:"
         ls -la
+    
+    - name: Cleanup virtual display processes
+      if: always()
+      run: |
+        echo "Cleaning up virtual display processes..."
+        
+        # Kill window manager if it's running
+        if [ -n "$WM_PID" ] && ps -p $WM_PID > /dev/null 2>&1; then
+          echo "Killing window manager (PID: $WM_PID)"
+          kill $WM_PID 2>/dev/null || true
+        fi
+        
+        # Kill Xvfb if it's running
+        if [ -n "$XVFB_PID" ] && ps -p $XVFB_PID > /dev/null 2>&1; then
+          echo "Killing Xvfb (PID: $XVFB_PID)"
+          kill $XVFB_PID 2>/dev/null || true
+        fi
+        
+        # Clean up any remaining processes
+        pkill -f "Xvfb :99" 2>/dev/null || true
+        pkill -f "fluxbox" 2>/dev/null || true
+        
+        echo "Cleanup completed"
     
     - name: Upload GUI screenshots and test artifacts
       uses: actions/upload-artifact@v4

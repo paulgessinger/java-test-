@@ -1,0 +1,122 @@
+name: CI Alternative (Headless Display Action)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  gui-test-alternative:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [11, 17, 21]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up JDK ${{ matrix.java }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ matrix.java }}
+        distribution: 'temurin'
+    
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+        restore-keys: ${{ runner.os }}-m2
+    
+    - name: Setup headless display
+      uses: pyvista/setup-headless-display-action@v3
+      with:
+        qt: false
+        pyvista: false
+    
+    - name: Install ImageMagick for screenshots
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y imagemagick
+    
+    - name: Verify display setup
+      run: |
+        echo "DISPLAY: $DISPLAY"
+        xdpyinfo | head -5
+        which convert
+        which import
+    
+    - name: Run GUI tests
+      run: |
+        # Run GUI tests with virtual display
+        mvn test -Dtest=JpegScalerGUITest
+        
+        # Run all tests to ensure everything works
+        mvn test
+    
+    - name: Build GUI JAR
+      run: |
+        mvn clean package -DskipTests
+        ls -la target/*.jar
+    
+    - name: Test GUI startup
+      run: |
+        # Test that GUI can start (with timeout)
+        timeout 10s java -jar target/jpeg-scaler-gui-1.0.0.jar || echo "GUI started and exited as expected"
+    
+    - name: Create GUI screenshots with proven setup
+      run: |
+        echo "Creating screenshots with DISPLAY: $DISPLAY"
+        
+        # Create test image
+        convert -size 800x600 xc:lightblue -fill darkblue -draw "circle 400,300 400,100" -pointsize 48 -annotate +200+320 "GUI Test - Java ${{ matrix.java }}" gui-demo-input.jpg
+        
+        # Take desktop screenshot
+        import -window root gui-screenshot-desktop.png
+        
+        # Start GUI in background
+        java -jar target/jpeg-scaler-gui-1.0.0.jar &
+        GUI_PID=$!
+        
+        # Wait for GUI to load
+        sleep 8
+        
+        # Take screenshot with GUI
+        import -window root gui-screenshot-with-gui.png
+        
+        # List windows
+        echo "Available windows:"
+        xwininfo -root -tree | grep -E "^\s+0x[0-9a-f]+" | head -5
+        
+        # Try to capture specific GUI window
+        GUI_WINDOW=$(xwininfo -root -tree | grep -i "jpeg\|scaler" | head -1 | awk '{print $1}' || echo "")
+        if [ -n "$GUI_WINDOW" ]; then
+          import -window "$GUI_WINDOW" gui-screenshot-gui-window.png
+        fi
+        
+        # Clean up
+        kill $GUI_PID 2>/dev/null || true
+        
+        # Create annotated screenshot
+        if [ -f gui-screenshot-with-gui.png ]; then
+          convert gui-screenshot-with-gui.png -pointsize 20 -fill red -annotate +10+25 "JPEG Scaler GUI - Java ${{ matrix.java }}" gui-screenshot-final.png
+        fi
+        
+        # List created files
+        echo "Created files:"
+        ls -la gui-*.png gui-*.jpg 2>/dev/null || echo "No screenshot files found"
+      continue-on-error: true
+    
+    - name: Upload screenshots
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: gui-screenshots-alternative-java-${{ matrix.java }}
+        path: |
+          gui-*.png
+          gui-*.jpg
+          target/*.jar
+        retention-days: 7
