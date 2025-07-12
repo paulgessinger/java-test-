@@ -39,7 +39,7 @@ jobs:
       run: mvn clean test
     
     - name: Build executable JAR
-      run: mvn clean package
+      run: mvn clean package -DskipTests
     
     - name: Test CLI with downloaded image
       run: |
